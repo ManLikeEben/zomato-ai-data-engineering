@@ -1,0 +1,21 @@
+﻿SELECT
+    order_id,
+    user_id,
+    restaurant_id,
+    order_timestamp,
+    order_date,
+    restaurant_city,
+    cuisine,
+    items_count,
+    sales_qty,
+    subtotal,
+    discount,
+    delivery_fee,
+    gst,
+    sales_amount,
+    currency,
+    payment_method,
+    order_status,
+    customer_rating,
+    delivery_time_min
+FROM main.fact_orders

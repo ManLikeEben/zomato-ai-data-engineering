@@ -1,0 +1,54 @@
+﻿
+version: 2
+
+models:
+  - name: stg_orders
+    description: "Staging view for standardised Zomato orders."
+    columns:
+      - name: order_id
+        data_tests:
+          - unique
+          - not_null
+      - name: user_id
+        data_tests:
+          - not_null
+      - name: order_date
+        data_tests:
+          - not_null
+      - name: sales_amount
+        data_tests:
+          - not_null
+      - name: order_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Delivered
+                  - Cancelled
+                  - Refunded
+
+  - name: daily_revenue
+    description: "Daily order and delivered-revenue metrics by city and currency."
+    columns:
+      - name: order_date
+        data_tests:
+          - not_null
+      - name: total_orders
+        data_tests:
+          - not_null
+
+  - name: restaurant_performance
+    description: "Order and delivered-revenue metrics by restaurant, city, and currency."
+    columns:
+      - name: restaurant_id
+        data_tests:
+          - not_null
+      - name: total_orders
+        data_tests:
+          - not_null
+      - name: delivered_orders
+        data_tests:
+          - not_null
+      - name: delivered_revenue
+        data_tests:
+          - not_null

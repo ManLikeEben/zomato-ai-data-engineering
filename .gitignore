@@ -1,0 +1,21 @@
+# Python virtual environment
+.venv/
+
+# Python cache files
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Data files and local warehouse
+data/
+*.duckdb
+
+# dbt generated files
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
