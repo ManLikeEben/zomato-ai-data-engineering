@@ -2,20 +2,22 @@
 
 An end-to-end data engineering and AI analytics project that transforms **10 million food-delivery orders** into business insights through data modeling, analytics dashboards, and natural-language querying.
 
-🔗 **Live Dashboard:** [https://zomato-eben-ai.streamlit.app/]  
-💻 **GitHub Repository:** https://github.com/ManLikeEben/zomato-ai-data-engineering
+🔗 **Live Dashboard:** [Try EBEN](https://zomato-eben-ai.streamlit.app/)  
+💻 **GitHub Repository:** [View Source Code](https://github.com/ManLikeEben/zomato-ai-data-engineering)
 
 ## 🚀 Project Overview
 
-This project demonstrates how large-scale food-delivery data can be processed, transformed, validated, and analyzed using an end-to-end data engineering workflow.
+This project demonstrates how large-scale food-delivery data can be processed, transformed, validated, and analyzed through an end-to-end data engineering workflow.
 
-The platform combines a DuckDB analytical warehouse, dbt transformations, an interactive Streamlit dashboard, and an AI-powered SQL assistant called **EBEN {Enhanced Being for Exploration & Navigation}**.
+The platform combines a DuckDB analytical warehouse, dbt transformations, an interactive Streamlit dashboard, and an AI-powered SQL assistant called **EBEN (Enhanced Being for Exploration & Navigation)**.
 
-Users can explore business metrics through the dashboard or ask EBEN questions in plain English.
+Users can explore business metrics through the dashboard or ask EBEN questions in plain English to generate and execute SQL queries against the analytics database.
 
 ## 🏗️ System Architecture
 
 ![EBEN Zomato Data Engineering Architecture](docs/architecture.png)
+
+*The architecture diagram illustrates the data pipeline, analytical warehouse, transformation layer, AI query workflow, and cloud deployment.*
 
 ## 🏗️ Architecture
 
