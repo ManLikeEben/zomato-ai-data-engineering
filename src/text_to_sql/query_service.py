@@ -14,7 +14,7 @@ OLLAMA_MODEL = "qwen2.5:1.5b"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 
-AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama").lower()
+AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
 
 
 DATABASE_SCHEMA = """
