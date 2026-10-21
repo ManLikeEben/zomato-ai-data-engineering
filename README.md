@@ -19,6 +19,18 @@ Users can explore business metrics through the dashboard or ask EBEN questions i
 
 *The architecture diagram illustrates the data pipeline, analytical warehouse, transformation layer, AI query workflow, and cloud deployment.*
 
+## 📊 Dashboard Preview
+
+Explore key performance indicators, order trends, revenue insights, and restaurant performance through the interactive dashboard.
+
+![Zomato Analytics Dashboard](docs/dashboard.png)
+
+## 🤖 EBEN: AI-Powered SQL Assistant
+
+EBEN allows users to ask questions about the Zomato dataset in plain English and receive data-driven answers.
+
+![EBEN Natural Language Query Results](docs/eben-query.png)
+
 ## 🏗️ Architecture
 
 ```text
