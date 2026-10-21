@@ -13,6 +13,28 @@ The platform combines a DuckDB analytical warehouse, dbt transformations, an int
 
 Users can explore business metrics through the dashboard or ask EBEN questions in plain English to generate and execute SQL queries against the analytics database.
 
+## ✨ Key Features
+
+- **Large-Scale Data Processing:** Processes 10 million food-delivery orders alongside millions of related order items and other datasets.
+- **Analytical Data Warehouse:** Uses DuckDB to support efficient analytical queries over large datasets.
+- **Data Transformation with dbt:** Implements dimensional models, fact tables, analytical models, and automated data quality tests.
+- **AI-Powered SQL Assistant (EBEN):** Converts natural-language questions into SQL queries and returns data-driven answers using Gemini.
+- **Interactive Analytics Dashboard:** Built with Streamlit to explore revenue, order trends, restaurant performance, and other business metrics.
+- **Cloud Deployment:** Deploys the application through Streamlit Community Cloud, with the analytics database hosted separately on Hugging Face.
+- **Data Quality Validation:** Validates dataset relationships and transformations to improve analytical reliability.
+
+## 📈 Technical Achievements
+
+| Metric | Result |
+|---|---:|
+| Food-delivery orders processed | 10,000,000 |
+| Delivered orders | 9,150,122 |
+| Delivery success rate | 91.50% |
+| Delivered order revenue | ₹4,418,169,887 |
+| Data coverage | Jan 2024 – Jun 2026 |
+
+*Metrics reflect the project's current dataset and analytical definitions.*
+
 ## 🏗️ System Architecture
 
 ![EBEN Zomato Data Engineering Architecture](docs/architecture.png)
