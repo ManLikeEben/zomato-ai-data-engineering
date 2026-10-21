@@ -161,43 +161,79 @@ The Gemini API is used for AI-powered querying. API availability and quota limit
 
 ## 💻 Local Setup
 
+Follow these steps to run the Zomato AI Data Engineering Platform on your local machine.
+
 ### Prerequisites
 
-- Python
+- Python 3.13
 - Git
-- A Google Gemini API key for AI querying
+- A Google Gemini API key for AI-powered querying
 
-### Installation
-
-Clone the repository:
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/ManLikeEben/zomato-ai-data-engineering.git
 cd zomato-ai-data-engineering
 ```
 
-Create and activate a virtual environment:
+### 2. Create and Activate a Virtual Environment
+
+On Windows PowerShell:
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 ```
 
-Install dependencies:
+On macOS or Linux:
 
 ```bash
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-Configure the required environment variables using a local `.env` file. Never commit API keys or other secrets.
+### 3. Install Dependencies
 
-Run the dashboard:
+```bash
+python -m pip install -r requirements.txt
+```
+
+### 4. Configure Environment Variables
+
+Create a local `.env` file by copying `.env.example`.
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Open `.env` and replace the placeholder with your own Gemini API key:
+
+```env
+AI_PROVIDER=gemini
+GEMINI_API_KEY=your_actual_gemini_api_key
+```
+
+**Security:** Never commit your `.env` file or share your API key publicly.
+
+### 5. Access the Database
+
+The project uses DuckDB for analytical queries. Follow the database configuration in the project to access the hosted analytics database or use a compatible local database.
+
+The original local warehouse is not required to be uploaded to GitHub.
+
+### 6. Run the Dashboard
 
 ```bash
 streamlit run streamlit_app/app.py
 ```
 
-Follow the project's configuration for accessing the database and enabling Gemini.
+Streamlit will provide a local URL, typically `http://localhost:8501`, where you can access the dashboard.
+
+### 7. Explore EBEN
+
+Once the dashboard is running and your API key is configured, use EBEN to ask natural-language questions about the Zomato dataset and explore the resulting analytics.
 
 ## 🔮 Potential Future Improvements
 
