@@ -1,11 +1,30 @@
-from src.text_to_sql.execution_service import execute_query
-from src.text_to_sql.summary_service import summarize_result
+import os
 from pathlib import Path
 
 import duckdb
 import pandas as pd
 import streamlit as st
+from huggingface_hub import hf_hub_download
 
+
+# --------------------------------------------------
+# AI configuration
+# --------------------------------------------------
+
+# Read the Gemini key from Streamlit Cloud Secrets when available.
+try:
+    cloud_api_key = st.secrets["GEMINI_API_KEY"]
+except (KeyError, FileNotFoundError):
+    cloud_api_key = None
+
+if cloud_api_key:
+    os.environ["GEMINI_API_KEY"] = cloud_api_key
+    os.environ["AI_PROVIDER"] = "gemini"
+
+
+# Import AI services only after configuring the environment.
+from src.text_to_sql.execution_service import execute_query
+from src.text_to_sql.summary_service import summarize_result
 
 # --------------------------------------------------
 # Configuration
@@ -13,12 +32,25 @@ import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-DB_PATH = (
+# Original warehouse: preserved and not modified.
+LOCAL_DB_PATH = (
     PROJECT_ROOT
     / "data"
     / "warehouse"
     / "zomato.duckdb"
 )
+
+# Smaller database prepared for the dashboard and cloud deployment.
+LOCAL_CLOUD_DB_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "cloud"
+    / "zomato_cloud.duckdb"
+)
+
+# Public Hugging Face dataset used when deploying to the cloud.
+HF_REPO_ID = "TheHelpedOne/zomato-cloud-analytics"
+HF_DB_FILENAME = "zomato_cloud.duckdb"
 
 st.set_page_config(
     page_title="Zomato Analytics",
@@ -33,13 +65,25 @@ st.set_page_config(
 
 @st.cache_resource
 def get_connection():
-    if not DB_PATH.exists():
-        raise FileNotFoundError(
-            f"DuckDB database not found: {DB_PATH}"
+    # Prefer the prepared cloud database when available locally.
+    if LOCAL_CLOUD_DB_PATH.exists():
+        db_path = LOCAL_CLOUD_DB_PATH
+
+    # Otherwise, download the prepared database from Hugging Face.
+    else:
+        db_path = hf_hub_download(
+            repo_id=HF_REPO_ID,
+            filename=HF_DB_FILENAME,
+            repo_type="dataset",
         )
 
-    return duckdb.connect(str(DB_PATH), read_only=True)
+    # Open the database in read-only mode.
+    return duckdb.connect(str(db_path), read_only=True)
 
+
+# --------------------------------------------------
+# Data loading
+# --------------------------------------------------
 
 @st.cache_data(ttl=300)
 def load_data(query, params=()):
@@ -62,6 +106,7 @@ st.markdown(
 
 st.caption("Data warehouse: DuckDB | Analytics: SQL and Python")
 
+
 # --------------------------------------------------
 # Currency filter
 # --------------------------------------------------
@@ -69,7 +114,7 @@ st.caption("Data warehouse: DuckDB | Analytics: SQL and Python")
 currencies = load_data(
     """
     SELECT DISTINCT currency
-    FROM main.fact_orders
+    FROM main.agg_daily_business
     WHERE currency IS NOT NULL
     ORDER BY currency
     """
@@ -78,7 +123,7 @@ currencies = load_data(
 currency_options = currencies["currency"].tolist()
 
 if not currency_options:
-    st.error("No currencies were found in the orders table.")
+    st.error("No currencies were found in the analytics database.")
     st.stop()
 
 selected_currency = st.selectbox(
@@ -87,6 +132,8 @@ selected_currency = st.selectbox(
 )
 
 st.caption(f"All financial figures are displayed in {selected_currency}.")
+
+
 # --------------------------------------------------
 # Date filters
 # --------------------------------------------------
@@ -96,7 +143,7 @@ date_range = load_data(
     SELECT
         MIN(order_date) AS min_date,
         MAX(order_date) AS max_date
-    FROM main.fact_orders
+    FROM main.agg_daily_business
     WHERE currency = ?
     """,
     (selected_currency,),
@@ -136,38 +183,34 @@ if start_date > end_date:
 
 try:
     summary = load_data(
-    """
-    SELECT
-        COUNT(*) AS total_orders,
-        COUNT(*) FILTER (
-            WHERE order_status = 'Delivered'
-        ) AS delivered_orders,
-        COUNT(*) FILTER (
-            WHERE order_status = 'Cancelled'
-        ) AS cancelled_orders,
-        COUNT(*) FILTER (
-            WHERE order_status = 'Refunded'
-        ) AS refunded_orders,
-        SUM(
-            CASE
-                WHEN order_status = 'Delivered'
-                THEN sales_amount
-                ELSE 0
-            END
-        ) AS delivered_revenue
-    FROM main.fact_orders
-    WHERE currency = ?
-      AND order_date BETWEEN ? AND ?
-    """,
-    (selected_currency, start_date, end_date),
-)
+        """
+        SELECT
+            SUM(order_count) AS total_orders,
+            SUM(order_count) FILTER (
+                WHERE order_status = 'Delivered'
+            ) AS delivered_orders,
+            SUM(order_count) FILTER (
+                WHERE order_status = 'Cancelled'
+            ) AS cancelled_orders,
+            SUM(order_count) FILTER (
+                WHERE order_status = 'Refunded'
+            ) AS refunded_orders,
+            SUM(sales_amount) FILTER (
+                WHERE order_status = 'Delivered'
+            ) AS delivered_revenue
+        FROM main.agg_daily_business
+        WHERE currency = ?
+          AND order_date BETWEEN ? AND ?
+        """,
+        (selected_currency, start_date, end_date),
+    )
 
     metrics = summary.iloc[0]
 
-    total_orders = int(metrics["total_orders"])
-    delivered_orders = int(metrics["delivered_orders"])
-    cancelled_orders = int(metrics["cancelled_orders"])
-    refunded_orders = int(metrics["refunded_orders"])
+    total_orders = int(metrics["total_orders"] or 0)
+    delivered_orders = int(metrics["delivered_orders"] or 0)
+    cancelled_orders = int(metrics["cancelled_orders"] or 0)
+    refunded_orders = int(metrics["refunded_orders"] or 0)
     delivered_revenue = float(metrics["delivered_revenue"] or 0)
 
     # --------------------------------------------------
@@ -178,26 +221,25 @@ try:
 
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric(
-        "Total Orders",
-        f"{total_orders:,}",
-    )
+    col1.metric("Total Orders", f"{total_orders:,}")
 
     col2.metric(
         "Delivered Orders",
         f"{delivered_orders:,}",
-        f"{delivered_orders / total_orders:.1%} of orders",
+        f"{delivered_orders / total_orders:.1%} of orders"
+        if total_orders else "0% of orders",
     )
 
     col3.metric(
         "Cancelled Orders",
         f"{cancelled_orders:,}",
-        f"{cancelled_orders / total_orders:.1%} of orders",
+        f"{cancelled_orders / total_orders:.1%} of orders"
+        if total_orders else "0% of orders",
     )
 
     col4.metric(
         "Delivered Revenue",
-        f"₹{delivered_revenue:,.0f}",
+        f"{selected_currency} {delivered_revenue:,.0f}",
     )
 
     st.caption(
@@ -214,19 +256,19 @@ try:
     st.subheader("Monthly Delivered Revenue")
 
     monthly_revenue = load_data(
-    """
-    SELECT
-        DATE_TRUNC('month', order_date) AS month,
-        SUM(sales_amount) AS delivered_revenue
-    FROM main.fact_orders
-    WHERE order_status = 'Delivered'
-      AND currency = ?
-      AND order_date BETWEEN ? AND ?
-    GROUP BY 1
-    ORDER BY 1
-    """,
-    (selected_currency, start_date, end_date),
-)
+        """
+        SELECT
+            DATE_TRUNC('month', order_date) AS month,
+            SUM(sales_amount) AS delivered_revenue
+        FROM main.agg_daily_business
+        WHERE order_status = 'Delivered'
+          AND currency = ?
+          AND order_date BETWEEN ? AND ?
+        GROUP BY 1
+        ORDER BY 1
+        """,
+        (selected_currency, start_date, end_date),
+    )
 
     if not monthly_revenue.empty:
         monthly_revenue["month"] = pd.to_datetime(
@@ -234,11 +276,11 @@ try:
         )
 
         st.line_chart(
-            monthly_revenue.set_index("month")[
-                "delivered_revenue"
-            ],
-            y_label="Revenue",
+            monthly_revenue.set_index("month")["delivered_revenue"],
+            y_label=f"Revenue ({selected_currency})",
         )
+    else:
+        st.info("No monthly revenue data is available for this date range.")
 
     # --------------------------------------------------
     # Top cities
@@ -247,44 +289,46 @@ try:
     st.subheader("Top 10 Cities by Delivered Revenue")
 
     top_cities = load_data(
-    """
-    SELECT
-        restaurant_city AS city,
-        COUNT(*) AS delivered_orders,
-        SUM(sales_amount) AS delivered_revenue
-    FROM main.fact_orders
-    WHERE order_status = 'Delivered'
-      AND currency = ?
-      AND order_date BETWEEN ? AND ?
-    GROUP BY restaurant_city
-    ORDER BY delivered_revenue DESC
-    LIMIT 10
-    """,
-    (selected_currency, start_date, end_date),
-)
+        """
+        SELECT
+            restaurant_city AS city,
+            SUM(order_count) AS delivered_orders,
+            SUM(sales_amount) AS delivered_revenue
+        FROM main.agg_daily_business
+        WHERE order_status = 'Delivered'
+          AND currency = ?
+          AND order_date BETWEEN ? AND ?
+        GROUP BY restaurant_city
+        ORDER BY delivered_revenue DESC
+        LIMIT 10
+        """,
+        (selected_currency, start_date, end_date),
+    )
 
-    col1, col2 = st.columns(2)
+    if not top_cities.empty:
+        col1, col2 = st.columns(2)
 
-    with col1:
-        st.bar_chart(
-            top_cities.set_index("city")["delivered_revenue"],
-            horizontal=True,
-            x_label="Revenue",
-        )
+        with col1:
+            st.bar_chart(
+                top_cities.set_index("city")["delivered_revenue"],
+                horizontal=True,
+                x_label=f"Revenue ({selected_currency})",
+            )
 
-    with col2:
-        st.dataframe(
-            top_cities,
-            hide_index=True,
-            use_container_width=True,
-        )
+        with col2:
+            st.dataframe(
+                top_cities,
+                hide_index=True,
+                use_container_width=True,
+            )
+    else:
+        st.info("No city data is available for this date range.")
 
     # --------------------------------------------------
     # Restaurant Performance
     # --------------------------------------------------
 
     st.divider()
-
     st.subheader("Restaurant Performance")
 
     restaurant_performance = load_data(
@@ -292,41 +336,25 @@ try:
         SELECT
             r.restaurant_name,
             r.city,
-            COUNT(*) FILTER (
-                WHERE o.order_status = 'Delivered'
-            ) AS delivered_orders,
-            SUM(
-                CASE
-                    WHEN o.order_status = 'Delivered'
-                    THEN o.sales_amount
-                    ELSE 0
-                END
-            ) AS delivered_revenue,
+            SUM(a.delivered_orders) AS delivered_orders,
+            SUM(a.delivered_revenue) AS delivered_revenue,
             ROUND(
-                AVG(
-                    CASE
-                        WHEN o.order_status = 'Delivered'
-                        THEN o.customer_rating
-                    END
-                ), 2
-            ) AS average_rating,
+                SUM(a.rating_sum) /
+                NULLIF(SUM(a.rating_count), 0),
+                2
+            ) AS average_customer_rating,
             ROUND(
-                AVG(
-                    CASE
-                        WHEN o.order_status = 'Delivered'
-                        THEN o.delivery_time_min
-                    END
-                ), 1
+                SUM(a.delivery_time_sum) /
+                NULLIF(SUM(a.delivery_time_count), 0),
+                1
             ) AS average_delivery_minutes
-        FROM main.fact_orders AS o
+        FROM main.agg_daily_restaurant AS a
         LEFT JOIN main.dim_restaurant AS r
-            ON o.restaurant_id = r.restaurant_id
-        WHERE o.currency = ?
-        AND o.order_date BETWEEN ? AND ?
+            ON a.restaurant_id = r.restaurant_id
+        WHERE a.currency = ?
+          AND a.order_date BETWEEN ? AND ?
         GROUP BY r.restaurant_name, r.city
-        HAVING COUNT(*) FILTER (
-            WHERE o.order_status = 'Delivered'
-        ) > 0
+        HAVING SUM(a.delivered_orders) > 0
         ORDER BY delivered_revenue DESC
         LIMIT 20
         """,
@@ -334,7 +362,6 @@ try:
     )
 
     if not restaurant_performance.empty:
-
         st.caption(
             "Top 20 restaurants ranked by delivered revenue "
             "for your selected currency and date range."
@@ -344,7 +371,6 @@ try:
 
         with col1:
             st.markdown("**Top Restaurants by Revenue**")
-
             st.bar_chart(
                 restaurant_performance.head(10).set_index(
                     "restaurant_name"
@@ -355,13 +381,11 @@ try:
 
         with col2:
             st.markdown("**Restaurant Performance Details**")
-
             st.dataframe(
                 restaurant_performance,
                 hide_index=True,
                 use_container_width=True,
             )
-
     else:
         st.info("No restaurant data is available for this date range.")
 
@@ -372,16 +396,17 @@ try:
     st.divider()
     st.subheader("Order Status Analysis")
 
-    order_status = load_data(
+    order_status_data = load_data(
         """
         SELECT
             order_status,
-            COUNT(*) AS order_count,
+            SUM(order_count) AS order_count,
             ROUND(
-                COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (),
+                SUM(order_count) * 100.0 /
+                NULLIF(SUM(SUM(order_count)) OVER (), 0),
                 2
             ) AS percentage
-        FROM main.fact_orders
+        FROM main.agg_daily_business
         WHERE currency = ?
           AND order_date BETWEEN ? AND ?
         GROUP BY order_status
@@ -390,25 +415,27 @@ try:
         (selected_currency, start_date, end_date),
     )
 
-    col1, col2 = st.columns(2)
+    if not order_status_data.empty:
+        col1, col2 = st.columns(2)
 
-    with col1:
-        st.markdown("**Order Distribution**")
+        with col1:
+            st.markdown("**Order Distribution**")
+            st.bar_chart(
+                order_status_data.set_index("order_status")["order_count"],
+                x_label="Order Status",
+                y_label="Number of Orders",
+            )
 
-        st.bar_chart(
-            order_status.set_index("order_status")["order_count"],
-            x_label="Order Status",
-            y_label="Number of Orders",
-        )
+        with col2:
+            st.markdown("**Status Breakdown**")
+            st.dataframe(
+                order_status_data,
+                hide_index=True,
+                use_container_width=True,
+            )
+    else:
+        st.info("No order status data is available for this date range.")
 
-    with col2:
-        st.markdown("**Status Breakdown**")
-
-        st.dataframe(
-            order_status,
-            hide_index=True,
-            use_container_width=True,
-        )
     # --------------------------------------------------
     # Interactive Restaurant Explorer
     # --------------------------------------------------
@@ -418,8 +445,7 @@ try:
 
     restaurant_filters = load_data(
         """
-        SELECT DISTINCT
-            city
+        SELECT DISTINCT city
         FROM main.dim_restaurant
         WHERE city IS NOT NULL
         ORDER BY city
@@ -437,10 +463,7 @@ try:
         )
 
     with col2:
-        selected_city = st.selectbox(
-            "Filter by city",
-            city_options,
-        )
+        selected_city = st.selectbox("Filter by city", city_options)
 
     with col3:
         minimum_rating = st.slider(

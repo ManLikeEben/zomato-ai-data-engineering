@@ -1,131 +1,188 @@
-import sqlglot
-from sqlglot import exp
+import os
 import re
-
 import requests
+import sqlglot
 
+from dotenv import load_dotenv
+from sqlglot import exp
+
+load_dotenv()
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
-MODEL = "qwen2.5:1.5b"
+OLLAMA_MODEL = "qwen2.5:1.5b"
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = "gemini-3.1-flash-lite"
+
+AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama").lower()
 
 
 DATABASE_SCHEMA = """
-You are a Text-to-SQL assistant for a Zomato analytics database.
+You are EBEN, a Text-to-SQL assistant for a Zomato analytics database.
 
-You may query ONLY these approved tables:
+DATABASE CONTEXT
+The application uses a read-only DuckDB cloud analytics database.
+The database contains pre-aggregated analytics tables and dimensions.
+Do not assume that the original raw fact tables are available.
 
-1. main.fact_orders
+APPROVED TABLES AND COLUMNS
+
+1. main.agg_daily_business
    Columns:
-   order_id, user_id, restaurant_id, order_timestamp,
-   order_date, restaurant_city, cuisine, items_count,
-   sales_qty, subtotal, discount, delivery_fee, gst,
-   sales_amount, currency, payment_method, order_status,
-   customer_rating, delivery_time_min
+   order_date, currency, restaurant_city, order_status,
+   order_count, sales_amount, subtotal, discount, delivery_fee, gst
 
-2. main.dim_restaurant
+   Purpose:
+   Daily business metrics by date, currency, city and order status.
+
+2. main.agg_daily_restaurant
+   Columns:
+   order_date, currency, restaurant_id, order_count,
+   delivered_orders, cancelled_orders, refunded_orders,
+   delivered_revenue, rating_sum, rating_count,
+   delivery_time_sum, delivery_time_count
+
+   Purpose:
+   Daily restaurant-level performance metrics.
+
+3. main.agg_daily_food
+   Columns:
+   order_date, currency, food_id, quantity_sold,
+   order_count, item_revenue
+
+   Purpose:
+   Daily food sales and quantity metrics.
+
+4. main.agg_daily_customer_segments
+   Columns:
+   order_date, currency, gender, marital_status, occupation,
+   education, monthly_income, family_size, order_count,
+   delivered_orders, delivered_revenue, customer_count
+
+   Purpose:
+   Daily aggregated customer-segment metrics.
+   Do not claim that SUM(customer_count) represents unique
+   customers over a date range. It represents summed daily counts.
+
+5. main.agg_daily_reviews
+   Columns:
+   review_date, restaurant_id, review_count, rating_sum, rating_count
+
+   Purpose:
+   Daily aggregated review metrics.
+
+6. main.dim_restaurant
    Columns:
    restaurant_id, restaurant_name, city, restaurant_rating,
    rating_count_estimate, listed_cost, cuisine, address
 
-3. main.dim_user
-   Columns:
-   user_id, age, gender, marital_status, occupation,
-   monthly_income, education, family_size
+   Purpose:
+   Restaurant descriptive information.
 
-4. main.dim_food
+7. main.dim_food
    Columns:
    food_id, food_name, food_type
 
-5. main.fact_order_items
-   Columns:
-   order_item_id, order_id, restaurant_id, food_id,
-   price, quantity, line_amount
+   Purpose:
+   Food descriptive information.
 
-6. main.fact_reviews
-   Columns:
-   review_id, order_id, user_id, restaurant_id,
-   review_rating, review_text, review_date
-EXAMPLES OF CORRECT SQL:
+IMPORTANT BUSINESS RULES
 
-Question: What are the top 5 cities by delivered revenue?
+- Generate DuckDB-compatible SQL.
+- Return exactly one read-only SELECT query.
+- Do not use CTEs or WITH clauses.
+- Never generate INSERT, UPDATE, DELETE, DROP, ALTER, CREATE,
+  COPY, ATTACH, or DETACH statements.
+- Query only the approved tables listed above.
+- Never reference the original raw fact tables.
+- Never invent table or column names.
+- Use the correct columns for each table.
+- Filter currency when comparing or reporting financial values.
+- Use SUM(order_count) for total orders across aggregated rows.
+- Use SUM(order_count) with order_status = 'Delivered'
+  for delivered orders from agg_daily_business.
+- Use SUM(order_count) with order_status = 'Cancelled'
+  for cancelled orders from agg_daily_business.
+- Use SUM(order_count) with order_status = 'Refunded'
+  for refunded orders from agg_daily_business.
+- For delivered revenue from agg_daily_business, use
+  SUM(sales_amount) and filter order_status = 'Delivered'.
+- For delivered revenue from agg_daily_restaurant, use
+  SUM(delivered_revenue).
+- Do not sum sales_amount across all statuses when the question
+  asks for delivered revenue.
+- For a month, filter from the first day inclusive to the first
+  day of the following month exclusive.
+- For "top N", use LIMIT N.
+- Use LIMIT 100 for questions without a smaller requested limit.
+- For revenue by city, use restaurant_city from agg_daily_business.
+- For restaurant names and descriptive information, join
+  agg_daily_restaurant to dim_restaurant using restaurant_id.
+- Do not join independent aggregate tables unless the question
+  requires it. Joining aggregates can multiply values.
+- Never access private user contact information.
+- Return only SQL, without Markdown or explanations.
+
+EXAMPLES
+
+Question: What are the total orders, delivered orders and
+delivered revenue for INR?
+
+SELECT
+    SUM(order_count) AS total_orders,
+    SUM(CASE WHEN order_status = 'Delivered'
+        THEN order_count ELSE 0 END) AS delivered_orders,
+    SUM(CASE WHEN order_status = 'Delivered'
+        THEN sales_amount ELSE 0 END) AS delivered_revenue
+FROM main.agg_daily_business
+WHERE currency = 'INR'
+
+Question: What are the top 5 cities by delivered revenue in INR?
 
 SELECT
     restaurant_city,
     SUM(sales_amount) AS delivered_revenue
-FROM main.fact_orders
+FROM main.agg_daily_business
 WHERE order_status = 'Delivered'
+  AND currency = 'INR'
 GROUP BY restaurant_city
 ORDER BY delivered_revenue DESC
 LIMIT 5
 
 Question: How many orders were cancelled in January 2026?
 
-SELECT COUNT(*) AS cancelled_orders
-FROM main.fact_orders
+SELECT
+    SUM(order_count) AS cancelled_orders
+FROM main.agg_daily_business
 WHERE order_status = 'Cancelled'
   AND order_date >= DATE '2026-01-01'
   AND order_date < DATE '2026-02-01'
+  AND currency = 'INR'
 
-Question: What are the top 10 restaurants by delivered revenue?
+Question: What are the top 10 restaurants by delivered revenue in INR?
 
 SELECT
     r.restaurant_id,
     r.restaurant_name,
-    SUM(o.sales_amount) AS delivered_revenue
-FROM main.fact_orders AS o
+    SUM(a.delivered_revenue) AS delivered_revenue
+FROM main.agg_daily_restaurant AS a
 JOIN main.dim_restaurant AS r
-    ON o.restaurant_id = r.restaurant_id
-WHERE o.order_status = 'Delivered'
+    ON a.restaurant_id = r.restaurant_id
+WHERE a.currency = 'INR'
 GROUP BY r.restaurant_id, r.restaurant_name
+HAVING SUM(a.delivered_orders) > 0
 ORDER BY delivered_revenue DESC
 LIMIT 10
-
-Rules:
-- Generate DuckDB-compatible SQL.
-- Return exactly one read-only SELECT query.
-- Do not use CTEs or WITH clauses.
-- Never generate INSERT, UPDATE, DELETE, DROP, ALTER, CREATE,
-  COPY, ATTACH, or DETACH statements.
-- Never access tables outside the approved list.
-- Never access private user contact information.
-- Never invent column names.
-- For delivered revenue, use sales_amount and filter
-  order_status = 'Delivered'.
-- Cancelled orders must use order_status = 'Cancelled'.
-- Refunded orders must use order_status = 'Refunded'.
-- For a month, filter from the first day of the month inclusive
-  to the first day of the next month exclusive.
-- For "top N", use LIMIT N, not LIMIT 100.
-- Use LIMIT 100 for questions without a smaller requested limit.
-- Return only SQL, without Markdown or explanations.
-- IMPORTANT: main.fact_orders has a column named restaurant_city.
-- IMPORTANT: main.dim_restaurant has a column named city,
-  NOT restaurant_city.
-- Never reference a column under a table alias unless that
-  column exists in that table.
-- For questions about revenue by city, use restaurant_city
-  from main.fact_orders and do not join dim_restaurant.
-- Only join tables when the question requires columns from
-  multiple tables.
-- For top 5 cities by delivered revenue, use this exact query:
-
-SELECT restaurant_city,
-       SUM(sales_amount) AS delivered_revenue
-FROM main.fact_orders
-WHERE order_status = 'Delivered'
-GROUP BY restaurant_city
-ORDER BY delivered_revenue DESC
-LIMIT 5
 """
 
-
 ALLOWED_TABLES = {
-    "main.fact_orders",
+    "main.agg_daily_business",
+    "main.agg_daily_restaurant",
+    "main.agg_daily_food",
+    "main.agg_daily_customer_segments",
+    "main.agg_daily_reviews",
     "main.dim_restaurant",
-    "main.dim_user",
     "main.dim_food",
-    "main.fact_order_items",
-    "main.fact_reviews",
 }
 
 
@@ -133,7 +190,7 @@ def generate_sql(
     question: str,
     error_feedback: str | None = None,
 ) -> str:
-    """Generate and validate DuckDB SQL using local Ollama."""
+    """Generate and validate DuckDB SQL using Ollama or Gemini."""
 
     if not question or not question.strip():
         raise ValueError("Please enter a question.")
@@ -149,7 +206,6 @@ def generate_sql(
         },
     ]
 
-    # If a previous query failed, ask the model to correct it.
     if error_feedback:
         messages.append(
             {
@@ -165,22 +221,143 @@ def generate_sql(
             }
         )
 
-    response = requests.post(
-        OLLAMA_URL,
-        json={
-            "model": MODEL,
-            "messages": messages,
-            "stream": False,
-            "options": {
-                "temperature": 0,
+    if AI_PROVIDER == "ollama":
+        response = requests.post(
+            OLLAMA_URL,
+            json={
+                "model": OLLAMA_MODEL,
+                "messages": messages,
+                "stream": False,
+                "options": {
+                    "temperature": 0,
+                },
             },
-        },
-        timeout=180,
-    )
+            timeout=180,
+        )
 
-    response.raise_for_status()
+        response.raise_for_status()
+        sql = response.json()["message"]["content"].strip()
 
-    sql = response.json()["message"]["content"].strip()
+    elif AI_PROVIDER == "gemini":
+        if not GEMINI_API_KEY:
+            raise RuntimeError(
+                "GEMINI_API_KEY is missing. Configure it in your "
+                ".env file locally or Streamlit secrets in the cloud."
+            )
+
+        gemini_url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{GEMINI_MODEL}:generateContent"
+        )
+
+        gemini_contents = [
+            {
+                "role": "user",
+                "parts": [{"text": question.strip()}],
+            }
+        ]
+
+        if error_feedback:
+            gemini_contents[0]["parts"][0]["text"] = (
+                f"Original question: {question.strip()}\n\n"
+                f"{error_feedback}\n\n"
+                "Correct the SQL using the error information. "
+                "Return one DuckDB SELECT query only, without Markdown."
+            )
+
+        response = requests.post(
+            gemini_url,
+            headers={
+                "x-goog-api-key": GEMINI_API_KEY,
+                "Content-Type": "application/json",
+            },
+            json={
+                "system_instruction": {
+                    "parts": [{"text": DATABASE_SCHEMA}]
+                },
+                "contents": gemini_contents,
+                "generationConfig": {
+                    "temperature": 0,
+                    "thinkingConfig": {
+                        "thinkingLevel": "low",
+                    },
+                    "maxOutputTokens": 1024,
+                },
+            },
+            timeout=120,
+        )
+
+        if not response.ok:
+            print("Gemini HTTP status:", response.status_code)
+            print("Gemini error details:", response.text[:2000])
+            response.raise_for_status()
+
+        response_data = response.json()
+
+        try:
+            sql = (
+                response_data["candidates"][0]["content"]["parts"][0]["text"]
+                .strip()
+            )
+        except (KeyError, IndexError, TypeError) as error:
+            raise RuntimeError(
+                "Gemini did not return SQL text. Check the API response "
+                "and try again."
+            ) from error
+
+        if error_feedback:
+            # The correction instructions must also reach Gemini.
+            correction_response = requests.post(
+                gemini_url,
+                headers={
+                    "x-goog-api-key": GEMINI_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "system_instruction": {
+                        "parts": [
+                            {"text": DATABASE_SCHEMA}
+                        ]
+                    },
+                    "contents": [
+                        {
+                            "role": "user",
+                            "parts": [
+                                {
+                                    "text": (
+                                        f"Original question: {question.strip()}\n\n"
+                                        f"{error_feedback}\n\n"
+                                        "Return one corrected DuckDB SELECT query only."
+                                    )
+                                }
+                            ],
+                        }
+                    ],
+                    "generationConfig": {
+                        "temperature": 0,
+                    },
+                },
+                timeout=60,
+            )
+
+            correction_response.raise_for_status()
+            correction_data = correction_response.json()
+
+            try:
+                sql = (
+                    correction_data["candidates"][0]["content"]["parts"][0]["text"]
+                    .strip()
+                )
+            except (KeyError, IndexError, TypeError) as error:
+                raise RuntimeError(
+                    "Gemini did not return corrected SQL text."
+                ) from error
+
+    else:
+        raise ValueError(
+            f"Unsupported AI_PROVIDER: {AI_PROVIDER}. "
+            "Choose 'ollama' or 'gemini'."
+        )
 
     # Remove Markdown fences if the model adds them.
     sql = re.sub(
@@ -191,7 +368,7 @@ def generate_sql(
     )
     sql = re.sub(r"\s*```$", "", sql).strip()
 
-    # Validate before returning anything to the execution layer.
+    # Keep the existing SQL security checks.
     sql = validate_sql(sql)
 
     return sql

@@ -1,5 +1,7 @@
-streamlit
-duckdb
-pandas
-sqlglot
-requests
+streamlit==1.65.0
+duckdb==1.5.6
+pandas==3.0.6
+sqlglot==30.21.0
+requests==2.34.2
+huggingface_hub
+python-dotenv==1.2.4

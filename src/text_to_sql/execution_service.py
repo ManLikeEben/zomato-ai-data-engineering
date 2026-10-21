@@ -2,11 +2,12 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+import requests
 
 from src.text_to_sql.query_service import generate_sql
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATABASE_PATH = PROJECT_ROOT / "data" / "warehouse" / "zomato.duckdb"
+DATABASE_PATH = PROJECT_ROOT / "data" / "cloud" / "zomato_cloud.duckdb"
 MAX_ATTEMPTS = 2
 
 
@@ -27,15 +28,12 @@ def execute_query(question: str) -> tuple[str, pd.DataFrame]:
     try:
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
-                # Generate SQL and validate it.
                 sql = generate_sql(
                     question,
                     error_feedback=error_feedback,
                 )
 
-                # Execute the validated query.
                 result = connection.execute(sql).fetchdf()
-
                 return sql, result
 
             except (ValueError, duckdb.Error) as error:
@@ -51,6 +49,13 @@ def execute_query(question: str) -> tuple[str, pd.DataFrame]:
                     "tables and existing columns. Return one SELECT "
                     "query without Markdown or explanations."
                 )
+
+            except requests.exceptions.RequestException as error:
+                raise RuntimeError(
+                    "EBEN could not reach the AI service. "
+                    "Please try again shortly. If the problem "
+                    "continues, check the AI provider and API quota."
+                ) from error
 
     finally:
         connection.close()
