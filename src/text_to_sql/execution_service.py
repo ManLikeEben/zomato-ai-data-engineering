@@ -7,8 +7,35 @@ import requests
 from src.text_to_sql.query_service import generate_sql
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATABASE_PATH = PROJECT_ROOT / "data" / "cloud" / "zomato_cloud.duckdb"
+
+LOCAL_DATABASE_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "cloud"
+    / "zomato_cloud.duckdb"
+)
+
+HF_REPO_ID = "TheHelpedOne/zomato-cloud-analytics"
+HF_DB_FILENAME = "zomato_cloud.duckdb"
+
 MAX_ATTEMPTS = 2
+
+
+def get_database_path() -> Path:
+    """Return the local database or download it from Hugging Face."""
+
+    if LOCAL_DATABASE_PATH.exists():
+        return LOCAL_DATABASE_PATH
+
+    from huggingface_hub import hf_hub_download
+
+    return Path(
+        hf_hub_download(
+            repo_id=HF_REPO_ID,
+            filename=HF_DB_FILENAME,
+            repo_type="dataset",
+        )
+    )
 
 
 def execute_query(question: str) -> tuple[str, pd.DataFrame]:
@@ -20,8 +47,10 @@ def execute_query(question: str) -> tuple[str, pd.DataFrame]:
     error_feedback = None
     last_error = None
 
+    database_path = get_database_path()
+
     connection = duckdb.connect(
-        str(DATABASE_PATH),
+        str(database_path),
         read_only=True,
     )
 
