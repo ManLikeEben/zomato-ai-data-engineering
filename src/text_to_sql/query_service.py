@@ -1,3 +1,4 @@
+import time
 import os
 import re
 import requests
@@ -222,18 +223,52 @@ def generate_sql(
         )
 
     if AI_PROVIDER == "ollama":
-        response = requests.post(
-            OLLAMA_URL,
-            json={
-                "model": OLLAMA_MODEL,
-                "messages": messages,
-                "stream": False,
-                "options": {
-                    "temperature": 0,
-                },
+        headers = {
+            "x-goog-api-key": GEMINI_API_KEY,
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "system_instruction": {
+                "parts": [{"text": DATABASE_SCHEMA}]
             },
-            timeout=180,
-        )
+            "contents": gemini_contents,
+            "generationConfig": {
+                "temperature": 0,
+                "thinkingConfig": {"thinkingLevel": "low"},
+                "maxOutputTokens": 1024,
+            },
+        }
+
+        for attempt in range(3):
+            try:
+                response = requests.post(
+                    gemini_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=120,
+                )
+
+                if response.status_code == 429 or response.status_code >= 500:
+                    response.raise_for_status()
+
+                response.raise_for_status()
+                break
+
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt == 2:
+                    raise
+                time.sleep(2 ** attempt)
+
+            except requests.HTTPError:
+                if (
+                    response.status_code not in (429, 500, 502, 503, 504)
+                    or attempt == 2
+                ):
+                    raise
+                time.sleep(2 ** attempt)
+
+        response_data = response.json()
 
         response.raise_for_status()
         sql = response.json()["message"]["content"].strip()
