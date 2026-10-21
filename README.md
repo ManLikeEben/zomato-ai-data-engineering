@@ -9,9 +9,13 @@ An end-to-end data engineering and AI analytics project that transforms **10 mil
 
 This project demonstrates how large-scale food-delivery data can be processed, transformed, validated, and analyzed using an end-to-end data engineering workflow.
 
-The platform combines a DuckDB analytical warehouse, dbt transformations, an interactive Streamlit dashboard, and an AI-powered SQL assistant called **EBEN(Enhanced Being for Exploration & Navigation)**.
+The platform combines a DuckDB analytical warehouse, dbt transformations, an interactive Streamlit dashboard, and an AI-powered SQL assistant called **EBEN {Enhanced Being for Exploration & Navigation}**.
 
 Users can explore business metrics through the dashboard or ask EBEN questions in plain English.
+
+## 🏗️ System Architecture
+
+![EBEN Zomato Data Engineering Architecture](docs/architecture.png)
 
 ## 🏗️ Architecture
 

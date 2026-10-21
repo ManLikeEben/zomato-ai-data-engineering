@@ -1,0 +1,82 @@
+<mxfile host="Electron" agent="ChatGPT">
+  <diagram id="eben-architecture" name="EBEN Architecture">
+    <mxGraphModel dx="1060" dy="688" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="raw" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeWidth=1.5;" value="Raw CSV datasets&lt;br&gt;Orders, items, restaurants,&lt;br&gt;users, food, reviews" vertex="1">
+          <mxGeometry height="80" width="220" x="40" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ingest" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeWidth=1.5;" value="Ingestion &amp; processing&lt;br&gt;Python + Pandas" vertex="1">
+          <mxGeometry height="80" width="200" x="310" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="duckdb" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeWidth=1.5;" value="Analytical warehouse&lt;br&gt;DuckDB" vertex="1">
+          <mxGeometry height="80" width="200" x="560" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="dbt" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeWidth=1.5;" value="Transform &amp; test&lt;br&gt;dbt + SQL" vertex="1">
+          <mxGeometry height="80" width="200" x="810" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="models" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeWidth=1.5;" value="Analytics models&lt;br&gt;Facts, dimensions, aggregates" vertex="1">
+          <mxGeometry height="80" width="220" x="1060" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="dashboard" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeWidth=1.5;" value="Interactive dashboard&lt;br&gt;Streamlit • charts and KPIs" vertex="1">
+          <mxGeometry height="90" width="300" x="170" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="eben" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeWidth=1.5;" value="EBEN AI assistant&lt;br&gt;Enhanced Being for Exploration &amp; Navigation" vertex="1">
+          <mxGeometry height="90" width="360" x="650" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="gemini" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeWidth=1.5;" value="Google Gemini API&lt;br&gt;Natural-language question → SQL" vertex="1">
+          <mxGeometry height="80" width="360" x="650" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="execute" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeWidth=1.5;" value="SQL validation &amp; execution&lt;br&gt;Validated DuckDB query → results" vertex="1">
+          <mxGeometry height="80" width="360" x="650" y="620" as="geometry" />
+        </mxCell>
+        <mxCell id="hosting" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeWidth=1.5;" value="Cloud deployment&lt;br&gt;Streamlit Community Cloud&lt;br&gt;Database file hosted on Hugging Face" vertex="1">
+          <mxGeometry height="100" width="400" x="40" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="note" parent="1" style="rounded=1;whiteSpace=wrap;html=1;align=center;verticalAlign=middle;strokeWidth=1.5;" value="Cloud database is a separate read-only analytics copy.&lt;br&gt;The original local warehouse remains intact." vertex="1">
+          <mxGeometry height="60" width="450" x="40" y="690" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="raw" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" target="ingest" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="ingest" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" target="duckdb" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="duckdb" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" target="dbt" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="dbt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" target="models" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="models" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" target="dashboard" value="analytics">
+          <mxGeometry relative="1" y="20" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="models" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" target="eben" value="query data">
+          <mxGeometry relative="1" x="-0.0732" y="20" as="geometry">
+            <mxPoint x="-1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="eben" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" target="gemini" value="question → SQL">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="gemini" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" target="execute" value="generated SQL">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="execute" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" target="eben" value="results">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="710" y="510" />
+              <mxPoint x="710" y="510" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="hosting" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" target="dashboard" value="hosts app">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
