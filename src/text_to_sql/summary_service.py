@@ -2,7 +2,7 @@ import pandas as pd
 
 
 def summarize_result(question: str, result: pd.DataFrame) -> str:
-    """Generate a simple, rule-based summary of SQL query results."""
+    """Generate readable, rule-based summaries of SQL query results."""
 
     if result.empty:
         return "No results were found for your question."
@@ -10,59 +10,84 @@ def summarize_result(question: str, result: pd.DataFrame) -> str:
     columns = {column.lower(): column for column in result.columns}
 
     # Handle revenue rankings.
-    if "delivered_revenue" in columns:
-        revenue_col = columns["delivered_revenue"]
+    revenue_col = next(
+        (
+            columns[name]
+            for name in [
+                "delivered_revenue",
+                "total_revenue",
+                "revenue",
+                "total_delivered_revenue",
+            ]
+            if name in columns
+        ),
+        None,
+    )
 
+    if revenue_col:
         location_col = next(
             (
                 columns[name]
-                for name in ["restaurant_city", "restaurant_name", "city"]
+                for name in [
+                    "restaurant_name",
+                    "restaurant_city",
+                    "city",
+                    "name",
+                ]
                 if name in columns
             ),
             None,
         )
 
-        if location_col:
-            top_row = result.iloc[0]
-            name = str(top_row[location_col])
-            revenue = float(top_row[revenue_col])
+        if location_col and len(result.columns) >= 2:
+            lines = ["Here are the results, ranked by revenue:\n"]
 
-            summary = (
-                f"The top result is {name}, with delivered revenue "
-                f"of ₹{revenue:,.2f}."
-            )
-
-            if len(result) > 1:
-                second_row = result.iloc[1]
-                second_name = str(second_row[location_col])
-                second_revenue = float(second_row[revenue_col])
-
-                summary += (
-                    f" In second place is {second_name}, with "
-                    f"₹{second_revenue:,.2f}."
+            for position, (_, row) in enumerate(
+                result.head(10).iterrows(), start=1
+            ):
+                name = str(row[location_col])
+                revenue = pd.to_numeric(
+                    row[revenue_col], errors="coerce"
                 )
 
-            summary += (
-                f" The query returned {len(result)} results in total."
+                if pd.notna(revenue):
+                    lines.append(
+                        f"{position}. {name}: ₹{revenue:,.2f}"
+                    )
+
+            lines.append(
+                f"\nShowing {min(len(result), 10)} of "
+                f"{len(result):,} results."
             )
 
-            return summary
+            return "\n".join(lines)
 
-    # Handle count queries.
+    # Handle single-value results, including counts and percentages.
     if len(result) == 1 and len(result.columns) == 1:
         column = result.columns[0]
         value = result.iloc[0, 0]
         label = column.replace("_", " ")
 
         if pd.api.types.is_number(value):
-            if isinstance(value, float) and value.is_integer():
-                value = int(value)
+            numeric_value = float(value)
 
-            return f"The result is {value:,} for {label}."
+            if any(
+                term in column.lower()
+                for term in ["rate", "percentage", "percent"]
+            ):
+                return f"The {label} is {numeric_value:,.2f}%."
+
+            if "revenue" in column.lower():
+                return f"The {label} is ₹{numeric_value:,.2f}."
+
+            if numeric_value.is_integer():
+                return f"The result is {int(numeric_value):,} for {label}."
+
+            return f"The result is {numeric_value:,.2f} for {label}."
 
         return f"The result for {label} is {value}."
 
-    # General fallback for other queries.
+    # General fallback.
     return (
         f"Your query returned {len(result):,} rows "
         f"across {len(result.columns)} columns."
