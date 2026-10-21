@@ -1,5 +1,11 @@
 import os
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import duckdb
 import pandas as pd
@@ -29,8 +35,6 @@ from src.text_to_sql.summary_service import summarize_result
 # --------------------------------------------------
 # Configuration
 # --------------------------------------------------
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Original warehouse: preserved and not modified.
 LOCAL_DB_PATH = (
