@@ -16,6 +16,56 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def _post_with_retry(
+    url,
+    *,
+    headers,
+    payload,
+    timeout,
+    max_attempts=3,
+):
+    """Retry requests after temporary HTTP, connection, or timeout errors."""
+
+    for attempt in range(max_attempts):
+        try:
+            response = requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=timeout,
+            )
+
+            if response.status_code in RETRYABLE_STATUS_CODES:
+                if attempt < max_attempts - 1:
+                    print(
+                        f"AI service returned HTTP {response.status_code}. "
+                        f"Retrying attempt {attempt + 2}/{max_attempts}."
+                    )
+                    time.sleep(2 ** attempt)
+                    continue
+
+            if not response.ok:
+                print("AI HTTP status:", response.status_code)
+                print("AI error details:", response.text[:2000])
+                response.raise_for_status()
+
+            return response
+
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt == max_attempts - 1:
+                raise
+
+            print(
+                f"AI connection failed. "
+                f"Retrying attempt {attempt + 2}/{max_attempts}."
+            )
+            time.sleep(2 ** attempt)
+
+    raise RuntimeError("AI request failed after all retry attempts.")
+
 
 
 DATABASE_SCHEMA = """
@@ -196,82 +246,45 @@ def generate_sql(
     if not question or not question.strip():
         raise ValueError("Please enter a question.")
 
-    messages = [
-        {
-            "role": "system",
-            "content": DATABASE_SCHEMA,
-        },
-        {
-            "role": "user",
-            "content": question.strip(),
-        },
-    ]
+    if AI_PROVIDER == "ollama":
+        payload = {
+            "model": OLLAMA_MODEL,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": DATABASE_SCHEMA,
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Question: {question.strip()}"
+                        if not error_feedback
+                        else (
+                            f"Question: {question.strip()}\n\n"
+                            f"Previous SQL error: {error_feedback}\n\n"
+                            "Correct the SQL. Return one DuckDB SELECT "
+                            "query only, without Markdown."
+                        )
+                    ),
+                },
+            ],
+            "stream": False,
+            "options": {"temperature": 0},
+        }
 
-    if error_feedback:
-        messages.append(
-            {
-                "role": "user",
-                "content": (
-                    "Your previous SQL query failed. Correct it using "
-                    "the error information below.\n\n"
-                    f"{error_feedback}\n\n"
-                    "Generate a corrected DuckDB SELECT query. "
-                    "Use only approved tables and existing columns. "
-                    "Return SQL only, without Markdown or explanations."
-                ),
-            }
+        response = _post_with_retry(
+            OLLAMA_URL,
+            headers={"Content-Type": "application/json"},
+            payload=payload,
+            timeout=120,
         )
 
-    if AI_PROVIDER == "ollama":
-        headers = {
-            "x-goog-api-key": GEMINI_API_KEY,
-            "Content-Type": "application/json",
-        }
-
-        payload = {
-            "system_instruction": {
-                "parts": [{"text": DATABASE_SCHEMA}]
-            },
-            "contents": gemini_contents,
-            "generationConfig": {
-                "temperature": 0,
-                "thinkingConfig": {"thinkingLevel": "low"},
-                "maxOutputTokens": 1024,
-            },
-        }
-
-        for attempt in range(3):
-            try:
-                response = requests.post(
-                    gemini_url,
-                    headers=headers,
-                    json=payload,
-                    timeout=120,
-                )
-
-                if response.status_code == 429 or response.status_code >= 500:
-                    response.raise_for_status()
-
-                response.raise_for_status()
-                break
-
-            except (requests.ConnectionError, requests.Timeout):
-                if attempt == 2:
-                    raise
-                time.sleep(2 ** attempt)
-
-            except requests.HTTPError:
-                if (
-                    response.status_code not in (429, 500, 502, 503, 504)
-                    or attempt == 2
-                ):
-                    raise
-                time.sleep(2 ** attempt)
-
-        response_data = response.json()
-
-        response.raise_for_status()
-        sql = response.json()["message"]["content"].strip()
+        try:
+            sql = response.json()["message"]["content"].strip()
+        except (KeyError, IndexError, TypeError) as error:
+            raise RuntimeError(
+                "Ollama did not return SQL text."
+            ) from error
 
     elif AI_PROVIDER == "gemini":
         if not GEMINI_API_KEY:
@@ -285,53 +298,46 @@ def generate_sql(
             f"{GEMINI_MODEL}:generateContent"
         )
 
-        gemini_contents = [
-            {
-                "role": "user",
-                "parts": [{"text": question.strip()}],
-            }
-        ]
+        user_prompt = f"Question: {question.strip()}"
 
         if error_feedback:
-            gemini_contents[0]["parts"][0]["text"] = (
-                f"Original question: {question.strip()}\n\n"
+            user_prompt += (
+                f"\n\nThe previous SQL query failed with this error:\n"
                 f"{error_feedback}\n\n"
                 "Correct the SQL using the error information. "
                 "Return one DuckDB SELECT query only, without Markdown."
             )
 
-        response = requests.post(
+        payload = {
+            "system_instruction": {
+                "parts": [{"text": DATABASE_SCHEMA}]
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": user_prompt}],
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0,
+                "thinkingConfig": {"thinkingLevel": "low"},
+                "maxOutputTokens": 1024,
+            },
+        }
+
+        response = _post_with_retry(
             gemini_url,
             headers={
                 "x-goog-api-key": GEMINI_API_KEY,
                 "Content-Type": "application/json",
             },
-            json={
-                "system_instruction": {
-                    "parts": [{"text": DATABASE_SCHEMA}]
-                },
-                "contents": gemini_contents,
-                "generationConfig": {
-                    "temperature": 0,
-                    "thinkingConfig": {
-                        "thinkingLevel": "low",
-                    },
-                    "maxOutputTokens": 1024,
-                },
-            },
+            payload=payload,
             timeout=120,
         )
 
-        if not response.ok:
-            print("Gemini HTTP status:", response.status_code)
-            print("Gemini error details:", response.text[:2000])
-            response.raise_for_status()
-
-        response_data = response.json()
-
         try:
             sql = (
-                response_data["candidates"][0]["content"]["parts"][0]["text"]
+                response.json()["candidates"][0]["content"]["parts"][0]["text"]
                 .strip()
             )
         except (KeyError, IndexError, TypeError) as error:
@@ -339,54 +345,6 @@ def generate_sql(
                 "Gemini did not return SQL text. Check the API response "
                 "and try again."
             ) from error
-
-        if error_feedback:
-            # The correction instructions must also reach Gemini.
-            correction_response = requests.post(
-                gemini_url,
-                headers={
-                    "x-goog-api-key": GEMINI_API_KEY,
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "system_instruction": {
-                        "parts": [
-                            {"text": DATABASE_SCHEMA}
-                        ]
-                    },
-                    "contents": [
-                        {
-                            "role": "user",
-                            "parts": [
-                                {
-                                    "text": (
-                                        f"Original question: {question.strip()}\n\n"
-                                        f"{error_feedback}\n\n"
-                                        "Return one corrected DuckDB SELECT query only."
-                                    )
-                                }
-                            ],
-                        }
-                    ],
-                    "generationConfig": {
-                        "temperature": 0,
-                    },
-                },
-                timeout=60,
-            )
-
-            correction_response.raise_for_status()
-            correction_data = correction_response.json()
-
-            try:
-                sql = (
-                    correction_data["candidates"][0]["content"]["parts"][0]["text"]
-                    .strip()
-                )
-            except (KeyError, IndexError, TypeError) as error:
-                raise RuntimeError(
-                    "Gemini did not return corrected SQL text."
-                ) from error
 
     else:
         raise ValueError(
@@ -403,7 +361,7 @@ def generate_sql(
     )
     sql = re.sub(r"\s*```$", "", sql).strip()
 
-    # Keep the existing SQL security checks.
+    # Preserve the existing SQL security checks.
     sql = validate_sql(sql)
 
     return sql
