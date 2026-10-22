@@ -13,7 +13,7 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "qwen2.5:1.5b"
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = "gemini-3.1-flash-lite"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 
 AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
