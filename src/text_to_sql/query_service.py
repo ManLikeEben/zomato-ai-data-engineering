@@ -1,3 +1,4 @@
+import random
 import time
 import os
 import re
@@ -25,7 +26,7 @@ def _post_with_retry(
     headers,
     payload,
     timeout,
-    max_attempts=3,
+    max_attempts=4,
 ):
     """Retry requests after temporary HTTP, connection, or timeout errors."""
 
@@ -44,7 +45,7 @@ def _post_with_retry(
                         f"AI service returned HTTP {response.status_code}. "
                         f"Retrying attempt {attempt + 2}/{max_attempts}."
                     )
-                    time.sleep(2 ** attempt)
+                    time.sleep((2 ** attempt) + random.uniform(0, 1))
                     continue
 
             if not response.ok:
@@ -62,7 +63,7 @@ def _post_with_retry(
                 f"AI connection failed. "
                 f"Retrying attempt {attempt + 2}/{max_attempts}."
             )
-            time.sleep(2 ** attempt)
+            time.sleep((2 ** attempt) + random.uniform(0, 1))
 
     raise RuntimeError("AI request failed after all retry attempts.")
 
