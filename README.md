@@ -237,7 +237,6 @@ Once the dashboard is running and your API key is configured, use EBEN to ask na
 
 ## 🔮 Potential Future Improvements
 
-- Improve AI retry and error handling.
 - Add automated pipeline scheduling.
 - Expand automated data quality monitoring.
 - Improve query-result visualization.
